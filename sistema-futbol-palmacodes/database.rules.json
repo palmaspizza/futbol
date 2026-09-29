@@ -1,0 +1,37 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "config": {
+      "admin": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || data.val() === auth.uid)"
+      }
+    },
+    "jugadores": {
+      ".read": "auth.uid === root.child('config/admin').val()",
+      ".write": "auth.uid === root.child('config/admin').val()",
+      "$id": { "nombre": { ".read": true }, "venc": { ".read": true } }
+    },
+    "pagos": {
+      ".read": "auth.uid === root.child('config/admin').val()",
+      ".write": "auth.uid === root.child('config/admin').val()"
+    },
+    "sesiones": {
+      ".read": true,
+      ".write": "auth.uid === root.child('config/admin').val()"
+    },
+    "asistencia": {
+      ".read": "auth.uid === root.child('config/admin').val()",
+      ".write": "auth.uid === root.child('config/admin').val()",
+      "$sid": { "$id": {
+        ".read": true,
+        ".write": "root.child('jugadores/'+$id+'/nombre').exists() && root.child('sesiones/'+$sid).exists()",
+        ".validate": "newData.hasChildren(['estado','ts']) && (newData.child('estado').val() === 'si' || newData.child('estado').val() === 'no') && newData.child('ts').isNumber()",
+        "estado": { ".validate": "newData.isString()" },
+        "ts": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      } }
+    }
+  }
+}

@@ -1,0 +1,118 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b7a43"><title>Entrenamientos</title>
+<style>
+:root{--bg:#f2f6f3;--cd:#fff;--tx:#13201a;--mu:#68786f;--ac:#0b7a43;--bd:#e1e8e3}
+@media(prefers-color-scheme:dark){:root{--bg:#0c120f;--cd:#151d18;--tx:#e8f0eb;--mu:#8da197;--bd:#24312a}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+.hero{background:linear-gradient(135deg,#075c32,#0fa15a);color:#fff;padding:calc(14px + env(safe-area-inset-top)) 18px 30px;display:flex;justify-content:space-between;align-items:center}
+.hero b{font-size:1.15em}main{max-width:860px;margin:-16px auto 30px;padding:0 14px}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 10px #0000000d}
+h2,h3{margin:.2em 0 .5em}a{color:var(--ac)}
+input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--cd);color:var(--tx);width:100%}
+button{width:auto;cursor:pointer;background:var(--ac);color:#fff;border:0;font-weight:600}button:active{transform:scale(.97)}button:disabled{opacity:.5}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}button.del{background:#c62828}
+label{display:block;font-size:.85em;color:var(--mu);margin:8px 0}label input{margin-top:3px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.sb{justify-content:space-between}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}.grid .card{margin:0;text-align:center;padding:12px}.grid b{display:block;font-size:1.5em}
+.tag{padding:2px 10px;border-radius:99px;font-size:.8em;color:#fff;font-weight:600}
+.verde{background:#2e7d32}.amarillo{background:#b26a00}.rojo{background:#c62828}.gris{background:#6b7785}
+.mu{color:var(--mu);font-size:.9em}.tabs{display:flex;gap:6px;margin-top:14px}.tabs button{flex:1;background:var(--cd);color:var(--tx);border:1px solid var(--bd)}.tabs .on{background:var(--ac);color:#fff}
+dialog{border:0;border-radius:18px;padding:20px;width:min(420px,92vw);background:var(--cd);color:var(--tx)}dialog::backdrop{background:#0009}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;padding:10px 18px;border-radius:99px;opacity:0;transition:.3s;pointer-events:none;z-index:9}#toast.on{opacity:1}
+footer{text-align:center;color:var(--mu);font-size:.8em;padding-bottom:24px}
+</style></head><body>
+<header class="hero"><b id="brand"></b><button class="sec" id="out" hidden style="color:#fff;border-color:#fff8">Salir</button></header>
+<main id="app"></main><footer id="firma"></footer><div id="toast"></div><dialog id="dlg"></dialog>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import{getDatabase,ref,get,set,push,update,query,limitToLast}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import{getAuth,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+/* ===== CONFIGURACIÓN (lo único que se edita) ===== */
+const MARCA="⚽ Entrenamientos", FIRMA="Desarrollado por Palma Codes";
+const CFG={apiKey:"AIzaSyBmza2tlpbKpN6ihxkjKOfzP9Gecq0eLCk",authDomain:"futballdb.firebaseapp.com",
+ databaseURL:"https://futballdb-default-rtdb.firebaseio.com", /* copia la URL exacta de Realtime Database */
+ projectId:"futballdb",storageBucket:"futballdb.firebasestorage.app",messagingSenderId:"452232249652",appId:"1:452232249652:web:bb1ff1bfdc72f8f075e561"};
+/* ================================================= */
+
+const fb=initializeApp(CFG),D=getDatabase(fb),AU=getAuth(fb),root=ref(D),R=p=>ref(D,p),$=s=>document.querySelector(s),V=$('#app');
+$('#brand').textContent=MARCA;$('#firma').textContent=FIRMA;
+const html=h=>V.innerHTML=h,esc=s=>String(s??'').replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const hoy=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const dias=i=>Math.round((new Date(i+'T00:00')-new Date(hoy()+'T00:00'))/864e5);
+const fd=f=>f?new Date(f+'T00:00').toLocaleDateString('es-CL',{weekday:'short',day:'numeric',month:'short'}):'—';
+const clp=n=>'$'+(+n||0).toLocaleString('es-CL');
+const estado=v=>{if(!v)return{t:'Sin plan',c:'gris'};const d=dias(v);return d<0?{t:'Vencido',c:'rojo',d}:d<=5?{t:'Por vencer',c:'amarillo',d}:{t:'Al día',c:'verde',d}};
+const sumaMes=iso=>{const[y,m,d]=iso.split('-').map(Number),t=new Date(y,m,1);t.setDate(Math.min(d,new Date(y,m+1,0).getDate()));return new Date(t.getTime()-t.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const wa=(tel,msg)=>{let n=String(tel||'').replace(/\D/g,'');if(n.length===9)n='56'+n;return'https://wa.me/'+n+'?text='+encodeURIComponent(msg)};
+const cod=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
+const lk=id=>location.origin+location.pathname+'?c='+id;
+const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600)};
+const dlg=$('#dlg'),modal=(t,b,ok='Guardar')=>new Promise(r=>{dlg.innerHTML=`<form method="dialog"><h3>${t}</h3>${b}<div class="row" style="margin-top:14px"><button value="ok">${ok}</button><button class="sec" value="x" formnovalidate>Cancelar</button></div></form>`;dlg.onclose=()=>r(dlg.returnValue==='ok'?Object.fromEntries(new FormData(dlg.querySelector('form'))):null);dlg.showModal()});
+addEventListener('hashchange',()=>location.reload());
+
+
+/* ---------- Inicio ---------- */
+function inicio(){html(`<div class="card"><h2>Confirma tu asistencia</h2><p class="mu">Escribe el código que te envió tu entrenador o abre tu link personal.</p><label>Tu código<input id="cd" maxlength="8" autocapitalize="characters" placeholder="K7QM4TXP"></label><button id="ok">Entrar</button><p class="mu">¿Eres el entrenador? <a href="#admin">Acceso</a></p></div>`);
+ $('#ok').onclick=()=>{const c=$('#cd').value.trim().toUpperCase();if(c)location.search='?c='+c}}
+
+/* ---------- Jugador (sin contraseña: su link es su llave) ---------- */
+async function jugador(id){
+ V.onclick=async e=>{const b=e.target.closest('[data-a]');if(!b)return;b.disabled=true;
+  try{await set(R(`asistencia/${b.dataset.id}/${id}`),{estado:b.dataset.a,ts:Date.now()});toast('Respuesta guardada ✔')}catch{toast('No se pudo guardar')}jugador(id)};
+ try{const[n,v]=await Promise.all([get(R(`jugadores/${id}/nombre`)),get(R(`jugadores/${id}/venc`))]);
+  if(!n.exists())return html('<div class="card"><h2>Código no válido</h2><p class="mu">Pídele un link nuevo a tu entrenador.</p><a href="./">Volver</a></div>');
+  const e=estado(v.val()),q=await get(query(R('sesiones'),limitToLast(20))),l=[];q.forEach(x=>{l.push({id:x.key,...x.val()})});
+  const fut=l.filter(x=>x.fecha>=hoy()).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+  await Promise.all(fut.map(async x=>x.r=(await get(R(`asistencia/${x.id}/${id}`))).val()?.estado));
+  const tx=e.d==null?'Sin plan de pago':e.d<0?`Venció hace ${-e.d} día(s)`:e.d===0?'Vence hoy':`Vence en ${e.d} día(s)`;
+  html(`<div class="card"><p class="mu">Hola 👋</p><h2>${esc(n.val())}</h2><p>Mensualidad <span class="tag ${e.c}">${e.t}</span></p><p class="mu">${tx} · ${fd(v.val())}</p></div><h3 style="padding:0 4px">Próximos entrenamientos</h3>`+
+  (fut.map(s=>`<div class="card"><b>${fd(s.fecha)} · ${esc(s.hora)}</b><br><span class="mu">📍 ${esc(s.lugar)}</span><div class="row" style="margin-top:10px"><button data-a="si" data-id="${s.id}" class="${s.r==='si'?'':'sec'}">✅ Voy</button><button data-a="no" data-id="${s.id}" class="${s.r==='no'?'del':'sec'}">❌ No voy</button></div></div>`).join('')||'<div class="card mu">No hay entrenamientos programados.</div>')+'<p class="mu" style="text-align:center">Tip: guarda esta página en tu pantalla de inicio.</p>');
+ }catch(x){html('<div class="card">Error al cargar. Intenta de nuevo.</div>');console.error(x)}}
+
+/* ---------- Entrenador ---------- */
+let J={},S=[],tab='j',busy=false;
+function admin(){
+ $('#out').onclick=()=>signOut(AU);V.onclick=adminClick;
+ onAuthStateChanged(AU,async u=>{if(busy)return;$('#out').hidden=!u;
+  if(!u)return login(location.hash==='#setup');
+  const a=(await get(R('config/admin'))).val();
+  if(a===u.uid)return panel();
+  toast(a?'Esta cuenta no es administradora':'Falta la instalación (#setup)');signOut(AU)})}
+function login(setup){
+ html(`<div class="card"><h2>${setup?'Instalación inicial':'Acceso entrenador'}</h2><p class="mu">${setup?'Crea la cuenta del entrenador. Quedará como único administrador.':'Ingresa con tu correo y contraseña.'}</p><label>Correo<input id="em" type="email" autocomplete="username"></label><label>Contraseña (mín. 6)<input id="pw" type="password" autocomplete="${setup?'new':'current'}-password"></label><div class="row"><button id="go">${setup?'Crear cuenta':'Entrar'}</button>${setup?'':'<button class="sec" id="rs">Olvidé mi contraseña</button>'}</div></div>`);
+ $('#go').onclick=async()=>{const em=$('#em').value.trim(),pw=$('#pw').value;
+  try{if(setup){busy=true;const c=await createUserWithEmailAndPassword(AU,em,pw);await set(R('config/admin'),c.user.uid);busy=false;location.hash='#admin'}
+   else await signInWithEmailAndPassword(AU,em,pw)}
+  catch{busy=false;if(setup)signOut(AU);toast(setup?'No se pudo instalar (¿ya está instalado?)':'Correo o contraseña incorrectos')}};
+ if(!setup)$('#rs').onclick=async()=>{const em=$('#em').value.trim();if(!em)return toast('Escribe tu correo primero');try{await sendPasswordResetEmail(AU,em)}catch{}toast('Si el correo existe, te enviamos un enlace')}}
+async function panel(){J=(await get(R('jugadores'))).val()||{};S=[];(await get(query(R('sesiones'),limitToLast(30)))).forEach(x=>{S.push({id:x.key,...x.val()})});S.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora));draw()}
+function draw(){
+ const L=Object.entries(J).map(([id,j])=>({id,...j,e:estado(j.venc)})).sort((a,b)=>(a.e.d??999)-(b.e.d??999)),n=c=>L.filter(x=>x.e.c===c).length,
+ cob=L.filter(x=>x.e.c==='rojo'||x.e.c==='amarillo').reduce((s,x)=>s+(+x.monto||0),0),b=(a,t,c='',id='')=>`<button class="${c}" data-a="${a}" data-id="${id}">${t}</button>`;
+ html(`<div class="grid">${[['Jugadores',L.length],['Al día',n('verde')],['Por vencer',n('amarillo')],['Vencidos',n('rojo')],['Por cobrar',clp(cob)]].map(([t,v])=>`<div class="card"><b>${v}</b><span class="mu">${t}</span></div>`).join('')}</div>
+ <div class="tabs"><button data-a="tab" data-id="j" class="${tab==='j'?'on':''}">Jugadores</button><button data-a="tab" data-id="s" class="${tab==='s'?'on':''}">Entrenamientos</button></div>`+
+ (tab==='j'?`<div class="row sb"><h3>Jugadores</h3>${b('nj','＋ Agregar')}</div>`+(L.map(x=>`<div class="card"><b>${esc(x.nombre)}</b> <span class="tag ${x.e.c}">${x.e.t}</span><br><span class="mu">Vence ${fd(x.venc)} · ${clp(x.monto)} · ${esc(x.telefono)}</span><div class="row" style="margin-top:10px">${b('pago','💵 Pago','',x.id)}${b('wa','📲 Cobrar','sec',x.id)}${b('cp','🔗 Copiar link','sec',x.id)}${b('wl','📤 Enviar link','sec',x.id)}${b('ej','✏️','sec',x.id)}${b('dj','🗑','del',x.id)}</div></div>`).join('')||'<div class="card mu">Agrega tu primer jugador.</div>')
+ :`<div class="row sb"><h3>Entrenamientos</h3>${b('ns','＋ Crear')}</div>`+(S.map(s=>`<div class="card row sb"><div><b>${fd(s.fecha)} · ${esc(s.hora)}</b><br><span class="mu">📍 ${esc(s.lugar)}</span></div><div class="row">${b('as','👥 Asistencia','sec',s.id)}${b('ds','🗑','del',s.id)}</div></div>`).join('')||'<div class="card mu">Crea tu primer entrenamiento.</div>')))}
+const fj=j=>`<label>Nombre<input name="nombre" required value="${esc(j.nombre)}"></label><label>WhatsApp (9XXXXXXXX)<input name="telefono" inputmode="tel" value="${esc(j.telefono)}"></label><label>Correo (para recordatorios)<input name="email" type="email" value="${esc(j.email)}"></label><label>Mensualidad (CLP)<input name="monto" type="number" value="${esc(j.monto)}"></label><label>Próximo vencimiento<input name="venc" type="date" value="${esc(j.venc||hoy())}"></label>`;
+const adminClick=async e=>{
+ const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id,j=J[id]||{};
+ try{
+ if(a==='tab'){tab=id;return draw()}
+ if(a==='nj'||a==='ej'){const d=await modal(a==='nj'?'Nuevo jugador':'Editar jugador',fj(a==='nj'?{}:j));if(!d)return;const k=a==='ej'?id:cod(),o={nombre:d.nombre.trim(),telefono:d.telefono.trim(),email:d.email.trim(),monto:+d.monto||0,venc:d.venc||'',activo:true};
+  await update(R('jugadores/'+k),o);J[k]={...J[k],...o};toast('Guardado ✔');draw()}
+ else if(a==='pago'){const nv=sumaMes(j.venc&&dias(j.venc)>=0?j.venc:hoy()),d=await modal('Registrar pago · '+esc(j.nombre),`<label>Monto pagado (CLP)<input name="monto" type="number" required value="${esc(j.monto)}"></label><p class="mu">Nuevo vencimiento: <b>${fd(nv)}</b></p>`,'Registrar');if(!d)return;
+  await update(root,{[`jugadores/${id}/venc`]:nv,[`pagos/${id}/${push(R('pagos/'+id)).key}`]:{monto:+d.monto,fecha:hoy(),hasta:nv}});J[id].venc=nv;toast('Pago registrado ✔');draw()}
+ else if(a==='wa'){const v=estado(j.venc).d<0;open(wa(j.telefono,`Hola ${j.nombre} 👋, te recuerdo que tu mensualidad de ${clp(j.monto)} ${v?'venció':'vence'} el ${fd(j.venc)}. Puedes transferir y avisarme por acá. ¡Gracias!`),'_blank')}
+ else if(a==='cp'){await navigator.clipboard.writeText(lk(id));toast('Link copiado ✔')}
+ else if(a==='wl')open(wa(j.telefono,`Hola ${j.nombre} 👋, este es tu link personal para confirmar asistencia y ver tu mensualidad: ${lk(id)}`),'_blank');
+ else if(a==='dj'){if(!confirm(`¿Eliminar a ${j.nombre}? Su historial de pagos se conserva.`))return;await update(root,{['jugadores/'+id]:null});delete J[id];draw()}
+ else if(a==='ns'){const d=await modal('Nuevo entrenamiento',`<label>Fecha<input name="fecha" type="date" required value="${hoy()}"></label><label>Hora<input name="hora" type="time" value="19:00"></label><label>Lugar<input name="lugar" placeholder="Cancha..."></label>`,'Crear');if(!d)return;
+  await set(push(R('sesiones')),{fecha:d.fecha,hora:d.hora,lugar:d.lugar.trim()});panel()}
+ else if(a==='ds'){if(!confirm('¿Eliminar entrenamiento?'))return;await update(root,{['sesiones/'+id]:null,['asistencia/'+id]:null});panel()}
+ else if(a==='as'){const A_=(await get(R('asistencia/'+id))).val()||{},L=Object.entries(J),g=k=>L.filter(([i])=>(A_[i]?.estado||'nr')===k),li=x=>x.map(([,p])=>`<li>${esc(p.nombre)}</li>`).join('')||'<li class="mu">—</li>';
+  modal('Asistencia',`<b>✅ Van (${g('si').length})</b><ul>${li(g('si'))}</ul><b>❌ No van (${g('no').length})</b><ul>${li(g('no'))}</ul><b>⏳ Sin responder (${g('nr').length})</b><ul>${li(g('nr'))}</ul>`,'Cerrar')}
+ }catch(x){toast('Error: '+(x.code||x.message));console.error(x)}};
+
+const code=(new URLSearchParams(location.search).get('c')||'').toUpperCase();
+if(code)jugador(code);else if(['#admin','#setup'].includes(location.hash))admin();else inicio();
+</script></body></html>
