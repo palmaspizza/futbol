@@ -1,0 +1,48 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "config": {
+      "admin": {
+        ".read": true,
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || data.val() === auth.uid)"
+      }
+    },
+    "jugadores": {
+      ".read": "auth != null && auth.uid === root.child('config/admin').val()",
+      ".write": "auth != null && auth.uid === root.child('config/admin').val()",
+      "$id": { "nombre": { ".read": true }, "venc": { ".read": true } }
+    },
+    "solicitudes": {
+      ".read": "auth != null && auth.uid === root.child('config/admin').val()",
+      ".write": "auth != null && auth.uid === root.child('config/admin').val()",
+      "$id": {
+        ".write": "!data.exists() && $id.matches(/^[0-9]{9}$/) && !root.child('jugadores/'+$id).exists()",
+        ".validate": "newData.hasChildren(['nombre','telefono','ts']) && newData.child('nombre').isString() && newData.child('nombre').val().length <= 60 && newData.child('telefono').val() === $id && (!newData.child('email').exists() || newData.child('email').val().length <= 80)",
+        "$o": { ".validate": "$o === 'nombre' || $o === 'telefono' || $o === 'email' || $o === 'ts'" }
+      }
+    },
+    "pagos": {
+      ".read": "auth != null && auth.uid === root.child('config/admin').val()",
+      ".write": "auth != null && auth.uid === root.child('config/admin').val()"
+    },
+    "avisos": {
+      ".read": "auth != null && auth.uid === root.child('config/admin').val()",
+      ".write": "auth != null && auth.uid === root.child('config/admin').val()"
+    },
+    "sesiones": {
+      ".read": true,
+      ".write": "auth != null && auth.uid === root.child('config/admin').val()"
+    },
+    "asistencia": {
+      ".read": "auth != null && auth.uid === root.child('config/admin').val()",
+      ".write": "auth != null && auth.uid === root.child('config/admin').val()",
+      "$sid": { "$id": {
+        ".read": true,
+        ".write": "root.child('jugadores/'+$id+'/nombre').exists() && root.child('sesiones/'+$sid).exists()",
+        ".validate": "newData.hasChildren(['estado','ts']) && (newData.child('estado').val() === 'si' || newData.child('estado').val() === 'no') && newData.child('ts').isNumber()",
+        "$other": { ".validate": "$other === 'estado' || $other === 'ts'" }
+      } }
+    }
+  }
+}
